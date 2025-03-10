@@ -1,0 +1,7 @@
+<library path="lib/libgraph_slam_nodelet">
+  <class name="GraphSlamNodelet" type="GraphSlamNodelet" base_class_type="nodelet::Nodelet">
+  <description>
+   graph_slam
+  </description>
+  </class>
+</library>
