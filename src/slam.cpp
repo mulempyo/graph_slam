@@ -239,7 +239,6 @@ bool GraphSlamNode::initMapper(const sensor_msgs::LaserScan& scan)
   return true;
 }
 
-
 void GraphSlamNode::laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan) {
     
   pcl::PointCloud<pcl::PointXYZ>::Ptr current_scan = laserScanToPointCloud(scan);
@@ -291,6 +290,36 @@ void GraphSlamNode::laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan) 
   }
 
   past_scans_.push_back(current_scan);
+
+  if (past_scans_.size() > 5) {  
+    slam_.detect_loop_closure(slam_, past_scans_, current_scan);
+  }
+ 
+  static ros::Time last_optimization_time = ros::Time::now();
+  if ((ros::Time::now() - last_optimization_time).toSec() > 0) {  
+    slam_.optimize(10);
+    last_optimization_time = ros::Time::now();
+  }
+ 
+  Eigen::Vector3d mpose = slam_.getOptimizedPose();  
+
+  tf::Quaternion q;
+  q.setRPY(0, 0, mpose[2]);  
+  tf::Transform laser_to_map = tf::Transform(q, tf::Vector3(mpose[0], mpose[1], 0.0)).inverse();
+
+  q.setRPY(0.0, 0.0, odom_pose.z());
+  tf::Transform odom_to_laser = tf::Transform(q, tf::Vector3(odom_pose.x(), odom_pose.y(), 0.0));
+
+  map_to_odom_mutex_.lock();
+  map_to_odom_ = tf::Transform(odom_to_laser * laser_to_map).inverse();
+  map_to_odom_mutex_.unlock();
+
+
+  static ros::Time last_map_update(0, 0);
+  if (!got_map_ || (scan->header.stamp - last_map_update) > map_update_interval_) {
+    updateMap();
+    last_map_update = scan->header.stamp;
+  }
 }
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr GraphSlamNode::laserScanToPointCloud(const sensor_msgs::LaserScan::ConstPtr& scan) {
