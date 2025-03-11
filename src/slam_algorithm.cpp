@@ -16,7 +16,6 @@ namespace graph_slam {
 
     GraphSLAM::GraphSLAM(const std::string& solver_type) {
         graph = std::make_shared<g2o::SparseOptimizer>();
-        g2o::SparseOptimizer* graph = dynamic_cast<g2o::SparseOptimizer*>(this->graph.get());
 
         std::cout << "construct solver: " << solver_type << std::endl;
         g2o::OptimizationAlgorithmFactory* solver_factory = g2o::OptimizationAlgorithmFactory::instance();
@@ -59,12 +58,23 @@ namespace graph_slam {
     }
 
     void GraphSLAM::optimize(int num_iterations) {
-        g2o::SparseOptimizer* graph = dynamic_cast<g2o::SparseOptimizer*>(this->graph.get());
-        if(graph->edges().size() < 10) {
+        ROS_WARN("size:%f",graph->edges().size());
+        if (!graph) {
+            std::cerr << "Error: graph is nullptr" << std::endl;
             return;
         }
+    
+        if (graph->edges().size() < 10) {
+            std::cerr << "Not enough edges for optimization" << std::endl;
+            return;
+        }
+    
         graph->initializeOptimization();
-        graph->optimize(num_iterations);
+        int result = graph->optimize(num_iterations);
+
+        if (result <= 0) {
+            std::cerr << "Optimization failed" << std::endl;
+        }
     }
 
     Eigen::Vector3d GraphSLAM::getOptimizedPose() {
@@ -73,7 +83,7 @@ namespace graph_slam {
             return Eigen::Vector3d(0.0, 0.0, 0.0);
         }
     
-        g2o::VertexSE2* root_vertex = dynamic_cast<g2o::VertexSE2*>(graph->vertex(0));  // 첫 번째 노드 (기준 좌표)
+        g2o::VertexSE2* root_vertex = dynamic_cast<g2o::VertexSE2*>(graph->vertex(0));  
         if (!root_vertex) {
             ROS_WARN("[GraphSLAM] Root vertex is null, returning default pose.");
             return Eigen::Vector3d(0.0, 0.0, 0.0);
@@ -85,14 +95,12 @@ namespace graph_slam {
     
 
     void GraphSLAM::save(const std::string& filename) {
-        g2o::SparseOptimizer* graph = dynamic_cast<g2o::SparseOptimizer*>(this->graph.get());
         std::ofstream ofs(filename);
         graph->save(ofs);
     }
 
     bool GraphSLAM::load(const std::string& filename) {
         std::cout << "loading pose graph..." << std::endl;
-        g2o::SparseOptimizer* graph = dynamic_cast<g2o::SparseOptimizer*>(this->graph.get());
       
         std::ifstream ifs(filename);
         if(!graph->load(ifs)) {
@@ -102,7 +110,7 @@ namespace graph_slam {
         std::cout << "nodes  : " << graph->vertices().size() << std::endl;
         std::cout << "edges  : " << graph->edges().size() << std::endl;
       
-        if(!g2o::load_robust_kernels(filename + ".kernels", graph)) {
+        if(!g2o::load_robust_kernels(filename + ".kernels", graph.get())) {
           return false;
         }
       
